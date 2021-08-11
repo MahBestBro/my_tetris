@@ -2,7 +2,6 @@
 TODO:
 	- Font rendering
 	- Implement Scores
-	- Play again 
 */
 
 
