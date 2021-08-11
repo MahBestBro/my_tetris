@@ -8,71 +8,81 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <string>
 #include <iostream>
-#include <fstream>
-#include <sstream>
+#include <string>
+
+#define SHADER_READ_FILE_ERR 999
 
 typedef unsigned int uint;
 
 void checkCompileErrors(uint shader, std::string type);
 
-uint CompileShader(std::string vertName, std::string fragName, std::string geomName = "")
+uint CompileShader(const char* vertName, const char* fragName, const char* geomName = NULL)
 {
-    std::string vertCode, fragCode, geomCode;
-    std::ifstream vertFile, fragFile, geomFile;
+    char vertFileName[64], fragFileName[64], geomFileName[64];
+    snprintf(vertFileName, sizeof(vertFileName), "shaders/%s.vert", vertName);
+    snprintf(fragFileName, sizeof(fragFileName), "shaders/%s.frag", fragName);
+    snprintf(geomFileName, sizeof(geomFileName), "shaders/%s.geom", geomName);
 
-    // ensure ifstream objects can throw exceptions:
-    vertFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    fragFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    geomFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    try
+    FILE* vertFile, *fragFile, *geomFile; 
+    if (fopen_s(&vertFile, vertFileName, "r") != 0) {
+        std::cout << "ERROR::VERTEX_SHADER::FILE_NOT_SUCCESFULLY_READ\n";
+        return SHADER_READ_FILE_ERR;
+    }
+
+    if (fopen_s(&fragFile, fragFileName, "r") != 0) {
+        std::cout << "ERROR::FRAGMENT_SHADER::FILE_NOT_SUCCESFULLY_READ\n";
+        return SHADER_READ_FILE_ERR;
+    }
+
+    char c;
+
+    std::string vertCode;
+    while ((c = (char)fgetc(vertFile)) != EOF)
     {
-        // open files
-        vertFile.open(("shaders/" + vertName + ".vert").c_str());
-        fragFile.open(("shaders/" + fragName + ".frag").c_str());
-        std::stringstream vertStream, fragStream;
-        // read file's buffer contents into streams
-        vertStream << vertFile.rdbuf();
-        fragStream << fragFile.rdbuf();
-        // close file handlers
-        vertFile.close();
-        fragFile.close();
-        // convert stream into string
-        vertCode = vertStream.str();
-        fragCode = fragStream.str();
+        vertCode += c;
+    }
+    fclose(vertFile);
 
-        if (geomName != "")
-        {
-            geomFile.open(("shaders/" + geomName + ".geom").c_str());
-            std::stringstream geomStream;
-            geomStream << geomFile.rdbuf();
-            geomFile.close();
-            geomCode = geomStream.str();
+    std::string fragCode;
+    while ((c = (char)fgetc(fragFile)) != EOF)
+    {
+        fragCode += c;
+    }
+    fclose(fragFile);
+
+    std::string geomCode;
+    if (geomName)
+    {
+        if (fopen_s(&geomFile, geomFileName, "r") != 0) {
+            std::cout << "ERROR::FRAGMENT_SHADER::FILE_NOT_SUCCESFULLY_READ\n";
+            return SHADER_READ_FILE_ERR;
         }
-    }
-    catch (std::ifstream::failure& e)
-    {
-        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
+
+        while ((c = (char)fgetc(geomFile)) != EOF)
+        {
+            geomCode += c;
+        }
+        fclose(geomFile);
     }
 
-    const char* vertexCode = vertCode.c_str();
+	const char* vertexCode = vertCode.c_str();
     const char* fragmentCode = fragCode.c_str();
-    // 2. compile shaders
+    
     uint vertex, fragment;
-    // vertex shader
+    
     vertex = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex, 1, &vertexCode, NULL);
     glCompileShader(vertex);
     checkCompileErrors(vertex, "VERTEX");
-    // fragment Shader
+    
     fragment = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragment, 1, &fragmentCode, NULL);
     glCompileShader(fragment);
     checkCompileErrors(fragment, "FRAGMENT");
 
     uint geometry;
-    if(geomName != "")
+    if(geomName)
     {
         const char* geometryCode = geomCode.c_str();
         geometry = glCreateShader(GL_GEOMETRY_SHADER);
@@ -81,20 +91,19 @@ uint CompileShader(std::string vertName, std::string fragName, std::string geomN
         checkCompileErrors(geometry, "GEOMETRY");
     }
 
-    // shader Program
     uint program = glCreateProgram();
     glAttachShader(program, vertex);
     glAttachShader(program, fragment);
-    if (geomName != "") glAttachShader(program, geometry);
+    if (geomName) glAttachShader(program, geometry);
     glLinkProgram(program);
     checkCompileErrors(program, "PROGRAM");
 
     glDeleteShader(vertex);
     glDeleteShader(fragment);
-    if (geomName != "") glDeleteShader(geometry);
+    if (geomName) glDeleteShader(geometry);
 
     return program;
-} 
+}
 
 // utility function for checking shader compilation/linking errors.
 void checkCompileErrors(uint shader, std::string type)
@@ -108,7 +117,7 @@ void checkCompileErrors(uint shader, std::string type)
         {
             glGetShaderInfoLog(shader, 1024, NULL, infoLog);
             std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n" << 
-            infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            infoLog << "\n -- --------------------------------------------------- -- " << "\n";
         }
     }
     else
@@ -118,7 +127,7 @@ void checkCompileErrors(uint shader, std::string type)
         {
             glGetProgramInfoLog(shader, 1024, NULL, infoLog);
             std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n" << 
-            infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            infoLog << "\n -- --------------------------------------------------- -- " << "\n";
         }
     }
 }
