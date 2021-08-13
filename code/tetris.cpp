@@ -24,7 +24,11 @@ TODO:
 
 #define len(arr) (sizeof(arr)) / (sizeof(arr[0]))
 #define last(arr) arr[(len(arr))-1]
+#if DEBUG
 #define Assert(expression) if(!(expression)) {*(int*)0 = 0;}
+#else
+#define Assert(expression)
+#endif
 
 #define SET_BIT(a, b) (a) |= (b)
 #define RMV_BIT(a, b) (a) &= ~(b);
