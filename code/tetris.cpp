@@ -1,6 +1,5 @@
 /*
 TODO:
-	- Font rendering
 	- Implement Scores
 */
 
@@ -25,6 +24,7 @@ TODO:
 
 #define len(arr) (sizeof(arr)) / (sizeof(arr[0]))
 #define last(arr) arr[(len(arr))-1]
+#define Assert(expression) if(!(expression)) {*(int*)0 = 0;}
 
 #define SET_BIT(a, b) (a) |= (b)
 #define RMV_BIT(a, b) (a) &= ~(b);
@@ -78,16 +78,13 @@ void DrawBorderedCell(uint quadVAO, uint shader, int x, int y, vec4 fillColour, 
 void DrawTexturedCell(uint quadVAO, uint texShader, uint texture, int x, int y, vec4 colour);
 void ProcessKey(GLFWwindow* window, uint16* key, int glfwKey);
 
-void ResetGame(TetraminoType nextTetraminoType, 
-			   Tetramino* heldTetramino, 
-			   TetraminoType tetraminoQueue[5], 
-			   int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
+void ResetGame(TetraminoType nextTetraminoType, Tetramino* heldTetramino, TetraminoType tetraminoQueue[5]);
 vec4 TetraminoColour(TetraminoType tetraminoType);
-void LockTetramino(Tetramino tetramino, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
-void ClearLines(int lowestRow, int highestRow, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
-void MoveTetramino(Tetramino* tetramino, ivec2 direction, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
-void RotateTetramino(Tetramino* tetramino, bool rotateLeft, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
-ivec2 GetGhostTetraminoPos(Tetramino tetramino, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH]);
+void LockTetramino(Tetramino tetramino);
+void ClearLines(int lowestRow, int highestRow);
+void MoveTetramino(Tetramino* tetramino, ivec2 direction);
+void RotateTetramino(Tetramino* tetramino, bool rotateLeft);
+ivec2 GetGhostTetraminoPos(Tetramino tetramino);
 Tetramino InitTetramino(TetraminoType type, vec2 startPos);
 void GetTetraminoBlocks(TetraminoType type, ivec2 blockCoords[4]);
 TetraminoType NextTetramino(TetraminoType tetraminoQueue[5]);
@@ -98,6 +95,8 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 Input input;
+
+int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH] = {0};
 
 int main()
 {
@@ -153,14 +152,40 @@ int main()
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 
 	uint shader = CompileShader("cell", "cell");
+	if (shader == SHADER_READ_FILE_ERR)
+	{
+		std::cout << "FAILED TO READ CELL SHADER FILES!\n";
+		return 0;
+	}
+
 	uint texShader = CompileShader("texCell", "texCell");
+	if (texShader == SHADER_READ_FILE_ERR)
+	{
+		std::cout << "FAILED TO READ TEX_CELL SHADER FILES!\n";
+		return 0;
+	}
 
 	uint blockSkin = loadTexture("default_skin.png", true);
+	uint fontTexs[26] = {0};
+	//for (int i = 0; i < 26; ++i)
+	//{
+	//	char fileName[6];
+	//	char c = (char)(i - 65);
+	//	snprintf(fileName, sizeof(fileName), "%c.png", );
+	//	fontTexs[i] = loadTexture(fileName, true);
+	//}
+	fontTexs[6]  = loadTexture("G.png", true);
+	fontTexs[0]  = loadTexture("A.png", true);
+	fontTexs[12] = loadTexture("M.png", true);
+	fontTexs[4]  = loadTexture("E.png", true);
+	fontTexs[14] = loadTexture("O.png", true);
+	fontTexs[21] = loadTexture("V.png", true);
+	fontTexs[17] = loadTexture("R.png", true);
+
 
 	const int SEEN_HEIGHT = PLAY_AREA_HEIGHT - PLAY_AREA_Y_START;
 	const int X_OFFSET = (SCR_WIDTH  - CELL_PIXEL_LENGTH * PLAY_AREA_WIDTH)  / 2;
 	const int Y_OFFSET = (SCR_HEIGHT - CELL_PIXEL_LENGTH * SEEN_HEIGHT) / 2 - CELL_PIXEL_LENGTH*3;
-	int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH] = {0};
 
 	bool playingGame = true;
 
@@ -174,7 +199,7 @@ int main()
 
 	TetraminoType initialType = (TetraminoType)(std::rand() % 7 + 1);
 	Tetramino currentTetramino = InitTetramino(initialType, ivec2(4, PLAY_AREA_Y_START+1));
-	ivec2 ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino, playArea);
+	ivec2 ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino);
 
 	bool changeTetramino = false;
 	Tetramino heldTetramino = InitTetramino(NONE, ivec2(0));
@@ -208,7 +233,7 @@ int main()
 				if (numTimesSamePos == 2)
 				{
 					currentTetramino.pos = ghostTetraminoPos;
-					LockTetramino(currentTetramino, playArea);
+					LockTetramino(currentTetramino);
 					nextTetraminoType = NextTetramino(tetraminoQueue);
 					changeTetramino = true;
 					numTimesSamePos = 0;
@@ -216,7 +241,7 @@ int main()
 				else
 				{
 					ivec2 prevPos = currentTetramino.pos;
-					MoveTetramino(&currentTetramino, IVEC2_DOWN, playArea);
+					MoveTetramino(&currentTetramino, IVEC2_DOWN);
 					elapsedTime = 0.0f;
 
 					if (currentTetramino.pos == prevPos)
@@ -229,45 +254,45 @@ int main()
 			if (KeyDown(input.left))
 			{
 				heldTime = 0.0f;
-				MoveTetramino(&currentTetramino, IVEC2_LEFT, playArea);
+				MoveTetramino(&currentTetramino, IVEC2_LEFT);
 			}
 
 			if (KeyDown(input.right))
 			{
 				heldTime = 0.0f;
-				MoveTetramino(&currentTetramino, IVEC2_RIGHT, playArea);
+				MoveTetramino(&currentTetramino, IVEC2_RIGHT);
 			}
 
 			if (KeyPress(input.left))
 			{
 				heldTime += deltaTime;
 				if (heldTime > moveThreshold)
-					MoveTetramino(&currentTetramino, IVEC2_LEFT, playArea);
+					MoveTetramino(&currentTetramino, IVEC2_LEFT);
 			}
 
 			if (KeyPress(input.right))
 			{
 				heldTime += deltaTime;
 				if (heldTime > moveThreshold)
-					MoveTetramino(&currentTetramino, IVEC2_RIGHT, playArea);
+					MoveTetramino(&currentTetramino, IVEC2_RIGHT);
 			}
 
 			if (KeyPress(input.down))
 			{
-				MoveTetramino(&currentTetramino, IVEC2_DOWN, playArea);
+				MoveTetramino(&currentTetramino, IVEC2_DOWN);
 			}
 
 			if (KeyDown(input.x))
 			{
-				RotateTetramino(&currentTetramino, ROTATE_RIGHT, playArea);
+				RotateTetramino(&currentTetramino, ROTATE_RIGHT);
 			}
 
 			if (KeyDown(input.z))
 			{
-				RotateTetramino(&currentTetramino, ROTATE_LEFT, playArea);
+				RotateTetramino(&currentTetramino, ROTATE_LEFT);
 			}
 
-			ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino, playArea);
+			ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino);
 
 			if (KeyDown(input.shift))
 			{
@@ -282,7 +307,7 @@ int main()
 			if (KeyDown(input.space))
 			{
 				currentTetramino.pos = ghostTetraminoPos;
-				LockTetramino(currentTetramino, playArea);
+				LockTetramino(currentTetramino);
 				nextTetraminoType = NextTetramino(tetraminoQueue);
 				changeTetramino = true;
 				numTimesSamePos = 0;
@@ -291,11 +316,12 @@ int main()
 
 		if (KeyDown(input.f4))
 		{
-			ResetGame(nextTetraminoType, &heldTetramino, tetraminoQueue, playArea);
+			ResetGame(nextTetraminoType, &heldTetramino, tetraminoQueue);
 			playingGame = true;
 			elapsedTime = 0.0f;
 			numTimesSamePos = 0;
 			changeTetramino = true;
+			continue;
 		}
 
 		//Draw Black Backgorund
@@ -386,20 +412,36 @@ int main()
 		}
 
 		//If block goes over height, end the game
-		for (int i = 0; i < len(playArea[PLAY_AREA_Y_START-1]); ++i)
+		for (int y = 1; y < 3; y++)
 		{
-			if (playArea[PLAY_AREA_Y_START-1][i] != 0)
+			for (int i = 0; i < len(playArea[PLAY_AREA_Y_START-y]); ++i)
 			{
-				std::cout << "Game Over!\n";
-				playingGame = false;
-				break;
+				if (playArea[PLAY_AREA_Y_START-1][i] != 0)
+				{
+					playingGame = false;
+					break;
+				}
+			}
+		}
+
+		if (!playingGame)
+		{
+			const char gameOver[10] = "GAME OVER";
+			for (int i = 0; i < len(gameOver); ++i)
+			{
+				int charIndex = (int)gameOver[i] - 65;
+				int x = X_OFFSET + CELL_PIXEL_LENGTH * i;
+				int y = SCR_HEIGHT - Y_OFFSET + CELL_PIXEL_LENGTH; 
+
+				if (charIndex >= 0 && charIndex < 26)
+					DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4(1.0f));
+				
 			}
 		}
 
 
 		if (changeTetramino && playingGame)
 		{
-			
 			currentTetramino = InitTetramino(nextTetraminoType, ivec2(4, PLAY_AREA_Y_START+1));
 			
 			//Offset tetramino if usual spawn pos is unavailable
@@ -411,7 +453,11 @@ int main()
 				for (int j = start; j < end; ++j)
 				{
 					int x = 4 + j;
-					offset += (playArea[i][x] > 0);
+					if (playArea[i][x] > 0)
+					{
+						offset++;
+						break;
+					}
 				}
 			}
 			currentTetramino.pos.y -= offset;
@@ -514,8 +560,7 @@ void ProcessKey(GLFWwindow* window, uint16* key,int glfwKey)
 
 void ResetGame(TetraminoType nextTetraminoType, 
 			   Tetramino* heldTetramino, 
-			   TetraminoType tetraminoQueue[5], 
-			   int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+			   TetraminoType tetraminoQueue[5])
 {
 	nextTetraminoType = (TetraminoType)(std::rand() % 7 + 1);
 	*heldTetramino = InitTetramino(NONE, ivec2(0));
@@ -544,11 +589,12 @@ vec4 TetraminoColour(TetraminoType tetraminoType)
 }
 
 //Places tetramino blocks into play area
-void LockTetramino(Tetramino tetramino, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+void LockTetramino(Tetramino tetramino)
 {
 	for (int i = 0; i < 4; i++)
 	{
 		ivec2 cell = GetBlockCell(tetramino, i);
+		Assert(cell.y >= 0);
 		playArea[cell.y][cell.x] = (int)tetramino.type;
 	}
 
@@ -561,10 +607,10 @@ void LockTetramino(Tetramino tetramino, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA
 		if (y > highestY) highestY = y;
 		if (y < lowestY)  lowestY  = y;
 	}
-	ClearLines(lowestY, highestY, playArea);
+	ClearLines(lowestY, highestY);
 }
 
-void ClearLines(int lowestRow, int highestRow, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+void ClearLines(int lowestRow, int highestRow)
 {
 	bool lineHasBeenCleared = false;
 	for (int r = lowestRow; r <= highestRow; ++r)
@@ -588,7 +634,7 @@ void ClearLines(int lowestRow, int highestRow, int playArea[PLAY_AREA_HEIGHT][PL
 	} 
 }
 
-void MoveTetramino(Tetramino* tetramino, ivec2 direction, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+void MoveTetramino(Tetramino* tetramino, ivec2 direction)
 {	
 	for (int i = 0; i < 4; ++i)
 	{
@@ -603,7 +649,7 @@ void MoveTetramino(Tetramino* tetramino, ivec2 direction, int playArea[PLAY_AREA
 }
 
 //Wall kicks are a bit dodgy, fix possibly
-void RotateTetramino(Tetramino* tetramino, bool rotateLeft,int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+void RotateTetramino(Tetramino* tetramino, bool rotateLeft)
 {
 	if (tetramino->type == SQUARE) return;
 
@@ -661,7 +707,7 @@ void RotateTetramino(Tetramino* tetramino, bool rotateLeft,int playArea[PLAY_ARE
 	
 }
 
-ivec2 GetGhostTetraminoPos(Tetramino tetramino, int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH])
+ivec2 GetGhostTetraminoPos(Tetramino tetramino)
 {
 	//Find lowest hanging block
 	int maxY = 0;
