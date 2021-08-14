@@ -64,7 +64,7 @@ uint CompileShader(const char* vertName, const char* fragName, const char* geomN
         fclose(geomFile);
     }
 
-	const char* vertexCode = vertCode.c_str();
+    const char* vertexCode = vertCode.c_str();
     const char* fragmentCode = fragCode.c_str();
     // 2. compile shaders
     uint vertex, fragment;
