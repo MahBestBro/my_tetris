@@ -4,9 +4,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "tetris_vecs.h"
 
 #include <iostream>
 #include <string>
@@ -56,7 +54,7 @@ uint CompileShader(const char* vertName, const char* fragName, const char* geomN
     {
         if (fopen_s(&geomFile, geomFileName, "r") != 0) {
             std::cout << "ERROR::FRAGMENT_SHADER::FILE_NOT_SUCCESFULLY_READ\n";
-            return SHADER_READ_FILE_ERR;
+            return 999;
         }
 
         while ((c = (char)fgetc(geomFile)) != EOF)
@@ -68,14 +66,14 @@ uint CompileShader(const char* vertName, const char* fragName, const char* geomN
 
 	const char* vertexCode = vertCode.c_str();
     const char* fragmentCode = fragCode.c_str();
-    
+    // 2. compile shaders
     uint vertex, fragment;
-    
+    // vertex shader
     vertex = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex, 1, &vertexCode, NULL);
     glCompileShader(vertex);
     checkCompileErrors(vertex, "VERTEX");
-    
+    // fragment Shader
     fragment = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragment, 1, &fragmentCode, NULL);
     glCompileShader(fragment);
@@ -91,6 +89,7 @@ uint CompileShader(const char* vertName, const char* fragName, const char* geomN
         checkCompileErrors(geometry, "GEOMETRY");
     }
 
+    // shader Program
     uint program = glCreateProgram();
     glAttachShader(program, vertex);
     glAttachShader(program, fragment);
@@ -137,22 +136,22 @@ void shader_SetInt(uint shader, const char* name, int value)
     glUniform1i(glGetUniformLocation(shader, name), value);
 }
 
-void shader_SetMatrix4(uint shader, const char* name, glm::mat4 value)
-{
-    glUniformMatrix4fv(glGetUniformLocation(shader, name), 1, false, glm::value_ptr(value));
-}
+//void shader_SetMatrix4(uint shader, const char* name, mat4 value)
+//{
+//    glUniformMatrix4fv(glGetUniformLocation(shader, name), 1, false, value_ptr(value));
+//}
+//
+//void shader_SetMatrix4x4(uint shader, const char* name, mat4 value)
+//{
+//    glUniformMatrix4fv(glGetUniformLocation(shader, name), 1, false, value_ptr(value));
+//}
 
-void shader_SetMatrix4x4(uint shader, const char* name, glm::mat4 value)
-{
-    glUniformMatrix4fv(glGetUniformLocation(shader, name), 1, false, glm::value_ptr(value));
-}
-
-void shader_SetVector3f(uint shader, const char* name, glm::vec3 value)
+void shader_SetVector3f(uint shader, const char* name, vec3 value)
 {
     glUniform3f(glGetUniformLocation(shader, name), value.x, value.y, value.z);
 }
 
-void shader_SetVector4f(uint shader, const char* name, glm::vec4 value)
+void shader_SetVector4f(uint shader, const char* name, vec4 value)
 {
     glUniform4f(glGetUniformLocation(shader, name), value.x, value.y, value.z, value.w);
 }
