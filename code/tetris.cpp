@@ -1,23 +1,19 @@
 /*
 TODO:
 	- Implement Scores
+	- Custom vec2i, vec3 and vec4
 */
-
 
 #include "glad.c"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-//GLM - math library
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
+#include "tetris_vecs.h"
 #include "shader.h"
 #include "input.h"
 #include "tetris_texture.h"
 
-//#include <iostream>
+#include <iostream>
 #include <stdlib.h>
 #include <time.h>
 #include <vector>
@@ -42,18 +38,18 @@ TODO:
 #define PLAY_AREA_HEIGHT 23 
 #define PLAY_AREA_Y_START 3 //Where the play area starts being rendered
 
-#define IVEC2_RIGHT ivec2( 1, 0)
-#define IVEC2_LEFT  ivec2(-1, 0)
-#define IVEC2_UP	ivec2( 0,-1)
-#define IVEC2_DOWN  ivec2( 0, 1)
+#define VEC2I_RIGHT vec2i_init( 1, 0)
+#define VEC2I_LEFT  vec2i_init(-1, 0)
+#define VEC2I_UP	vec2i_init( 0,-1)
+#define VEC2I_DOWN  vec2i_init( 0, 1)
 
 #define ROTATE_LEFT  true
 #define ROTATE_RIGHT false
 
-#define ENABLE_GRID 0
+#define NUM_TEX_OFFSET 22
 
 typedef unsigned int uint;
-using namespace glm;
+//using namespace glm;
 
 enum TetraminoType
 {
@@ -70,8 +66,8 @@ enum TetraminoType
 struct Tetramino
 {
 	TetraminoType type;
-	ivec2 pos;
-	ivec2 blockCoords[4];
+	vec2i pos;
+	vec2i blockCoords[4];
 };
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -86,14 +82,17 @@ void ResetGame(TetraminoType nextTetraminoType, Tetramino* heldTetramino, Tetram
 vec4 TetraminoColour(TetraminoType tetraminoType);
 void LockTetramino(Tetramino tetramino);
 void ClearLines(int lowestRow, int highestRow);
-void MoveTetramino(Tetramino* tetramino, ivec2 direction);
+void MoveTetramino(Tetramino* tetramino, vec2i direction);
 void RotateTetramino(Tetramino* tetramino, bool rotateLeft);
-ivec2 GetGhostTetraminoPos(Tetramino tetramino);
-Tetramino InitTetramino(TetraminoType type, vec2 startPos);
-void GetTetraminoBlocks(TetraminoType type, ivec2 blockCoords[4]);
+vec2i GetGhostTetraminoPos(Tetramino tetramino);
+Tetramino InitTetramino(TetraminoType type, vec2i startPos);
+void GetTetraminoBlocks(TetraminoType type, vec2i blockCoords[4]);
 TetraminoType NextTetramino(TetraminoType tetraminoQueue[5]);
-ivec2 LocalToCell(ivec2 local);
-ivec2 GetBlockCell(Tetramino tetramino, int blockIndex);
+vec2i LocalToCell(vec2i local);
+vec2i GetBlockCell(Tetramino tetramino, int blockIndex);
+
+int min(int a, int b);
+int max(int a, int b);
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -102,7 +101,11 @@ Input input;
 
 int playArea[PLAY_AREA_HEIGHT][PLAY_AREA_WIDTH] = {0};
 
+#if DEBUG
 int main()
+#else
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+#endif
 {
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -170,22 +173,17 @@ int main()
 	}
 
 	uint blockSkin = loadTexture("default_skin.png", true);
-	uint fontTexs[26] = {0};
-	//for (int i = 0; i < 26; ++i)
-	//{
-	//	char fileName[6];
-	//	char c = (char)(i - 65);
-	//	snprintf(fileName, sizeof(fileName), "%c.png", );
-	//	fontTexs[i] = loadTexture(fileName, true);
-	//}
-	fontTexs[6]  = loadTexture("G.png", true);
-	fontTexs[0]  = loadTexture("A.png", true);
-	fontTexs[12] = loadTexture("M.png", true);
-	fontTexs[4]  = loadTexture("E.png", true);
-	fontTexs[14] = loadTexture("O.png", true);
-	fontTexs[21] = loadTexture("V.png", true);
-	fontTexs[17] = loadTexture("R.png", true);
-
+	#if DEBUG
+	uint debugSkin = loadTexture("test_block_skin4.png", true);
+	#endif
+	uint fontTexs[36] = {0};
+	for (int i = 0; i < 36; ++i)
+	{
+		char fileName[6];
+		char c = (char)((i < 26) ? i + 65 : NUM_TEX_OFFSET + i);
+		snprintf(fileName, sizeof(fileName), "%c.png", c);
+		fontTexs[i] = loadTexture(fileName, true);
+	}
 
 	const int SEEN_HEIGHT = PLAY_AREA_HEIGHT - PLAY_AREA_Y_START;
 	const int X_OFFSET = (SCR_WIDTH  - CELL_PIXEL_LENGTH * PLAY_AREA_WIDTH)  / 2;
@@ -202,11 +200,11 @@ int main()
 	std::srand((int)time(nullptr));
 
 	TetraminoType initialType = (TetraminoType)(std::rand() % 7 + 1);
-	Tetramino currentTetramino = InitTetramino(initialType, ivec2(4, PLAY_AREA_Y_START+1));
-	ivec2 ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino);
+	Tetramino currentTetramino = InitTetramino(initialType, vec2i_init(4, PLAY_AREA_Y_START+1));
+	vec2i ghostTetraminoPos = GetGhostTetraminoPos(currentTetramino);
 
 	bool changeTetramino = false;
-	Tetramino heldTetramino = InitTetramino(NONE, ivec2(0));
+	Tetramino heldTetramino = InitTetramino(NONE, vec2i_init(0));
 	TetraminoType nextTetraminoType;
 	TetraminoType tetraminoQueue[5];
 	for (int i = 0; i < len(tetraminoQueue); ++i)
@@ -244,8 +242,8 @@ int main()
 				}
 				else
 				{
-					ivec2 prevPos = currentTetramino.pos;
-					MoveTetramino(&currentTetramino, IVEC2_DOWN);
+					vec2i prevPos = currentTetramino.pos;
+					MoveTetramino(&currentTetramino, VEC2I_DOWN);
 					elapsedTime = 0.0f;
 
 					if (currentTetramino.pos == prevPos)
@@ -258,32 +256,32 @@ int main()
 			if (KeyDown(input.left))
 			{
 				heldTime = 0.0f;
-				MoveTetramino(&currentTetramino, IVEC2_LEFT);
+				MoveTetramino(&currentTetramino, VEC2I_LEFT);
 			}
 
 			if (KeyDown(input.right))
 			{
 				heldTime = 0.0f;
-				MoveTetramino(&currentTetramino, IVEC2_RIGHT);
+				MoveTetramino(&currentTetramino, VEC2I_RIGHT);
 			}
 
 			if (KeyPress(input.left))
 			{
 				heldTime += deltaTime;
 				if (heldTime > moveThreshold)
-					MoveTetramino(&currentTetramino, IVEC2_LEFT);
+					MoveTetramino(&currentTetramino, VEC2I_LEFT);
 			}
 
 			if (KeyPress(input.right))
 			{
 				heldTime += deltaTime;
 				if (heldTime > moveThreshold)
-					MoveTetramino(&currentTetramino, IVEC2_RIGHT);
+					MoveTetramino(&currentTetramino, VEC2I_RIGHT);
 			}
 
 			if (KeyPress(input.down))
 			{
-				MoveTetramino(&currentTetramino, IVEC2_DOWN);
+				MoveTetramino(&currentTetramino, VEC2I_DOWN);
 			}
 
 			if (KeyDown(input.x))
@@ -302,7 +300,7 @@ int main()
 			{
 				TetraminoType newType = (heldTetramino.type != NONE) ? 
 											heldTetramino.type : NextTetramino(tetraminoQueue);
-				heldTetramino = InitTetramino(currentTetramino.type, ivec2(0));
+				heldTetramino = InitTetramino(currentTetramino.type, vec2i_init(0));
 				nextTetraminoType = newType;
 				changeTetramino = true;
 				numTimesSamePos = 0;
@@ -336,12 +334,12 @@ int main()
 				#if ENABLE_GRID
 					DrawBorderedCell(quadVAO, shader, X_OFFSET + CELL_PIXEL_LENGTH*j, 
 									 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
-									 vec4(glm::vec3(0.0f), 1.0f), 
-									 vec4(vec3(0.15f), 1.0f));
+									 vec4_init(vec3_init(0.0f), 1.0f), 
+									 vec4_init(vec3_init(0.15f), 1.0f));
 				#else
 					DrawCell(quadVAO, shader, X_OFFSET + CELL_PIXEL_LENGTH*j, 
 							 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
-							 vec4(glm::vec3(0.0f), 1.0f));
+							 vec4_init(vec3_init(0.0f), 1.0f));
 				#endif
 			}
 		}
@@ -365,7 +363,7 @@ int main()
 		{
 			for (int i = 0; i < 4; ++i)
 			{
-				ivec2 cell = GetBlockCell(currentTetramino, i);
+				vec2i cell = GetBlockCell(currentTetramino, i);
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * cell.x;
 				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * cell.y;
 				if (cell.y < PLAY_AREA_Y_START) continue;
@@ -378,12 +376,13 @@ int main()
 		{
 			for (int i = 0; i < 4; ++i)
 			{
-				ivec2 cell = ghostTetraminoPos + LocalToCell(currentTetramino.blockCoords[i]);
+				vec2i cell = ghostTetraminoPos + LocalToCell(currentTetramino.blockCoords[i]);
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * cell.x;
 				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * cell.y;
 				if (cell.y < PLAY_AREA_Y_START) continue;
-				vec3 ghostColour = TetraminoColour(currentTetramino.type);
-				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, vec4(ghostColour, 0.5f));
+				vec4 ghostColour = TetraminoColour(currentTetramino.type);
+				ghostColour.a = 0.5f;
+				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, ghostColour);
 			}
 		}
 
@@ -402,12 +401,12 @@ int main()
 		//Draw next tetraminos
 		for (int i = 0; i < len(tetraminoQueue); ++i)
 		{
-			ivec2 blocks[4];
+			vec2i blocks[4];
 			GetTetraminoBlocks(tetraminoQueue[i], blocks);
 			int queueOffset = len(tetraminoQueue) - i - 1;
 			for (int b = 0; b < 4; ++b)
 			{
-				ivec2 cell = LocalToCell(blocks[b]);
+				vec2i cell = LocalToCell(blocks[b]);
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * (PLAY_AREA_WIDTH + 3 + cell.x);
 				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * 
 								(3*queueOffset + cell.y + PLAY_AREA_Y_START);
@@ -416,37 +415,52 @@ int main()
 		}
 
 		//If block goes over height, end the game
-		for (int y = 1; y < 3; y++)
+		for (int i = 0; i < len(playArea[PLAY_AREA_Y_START-1]); ++i)
 		{
-			for (int i = 0; i < len(playArea[PLAY_AREA_Y_START-y]); ++i)
+			if (playArea[PLAY_AREA_Y_START-1][i] != 0)
 			{
-				if (playArea[PLAY_AREA_Y_START-1][i] != 0)
-				{
-					playingGame = false;
-					break;
-				}
+				playingGame = false;
+				break;
 			}
 		}
 
+		//Draw Game Over Text
 		if (!playingGame)
 		{
 			const char gameOver[10] = "GAME OVER";
 			for (int i = 0; i < len(gameOver); ++i)
 			{
-				int charIndex = (int)gameOver[i] - 65;
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * i;
-				int y = SCR_HEIGHT - Y_OFFSET + CELL_PIXEL_LENGTH; 
+				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH; 
 
+				int charIndex = (int)gameOver[i] - 65;
 				if (charIndex >= 0 && charIndex < 26)
-					DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4(1.0f));
+					DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4_init(1.0f));
 				
 			}
+		}
+
+		//Draw Restart Text
+		const char restartText[26] = "PRESS F4 TO RESTART GAME";
+		for (int i = 0; i < len(restartText); ++i)
+		{
+			if (restartText[i] == ' ') continue;
+
+			int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - len(restartText)) / 2;
+			int x = CELL_PIXEL_LENGTH * (xOffset + i + 1);
+			int y = SCR_HEIGHT - CELL_PIXEL_LENGTH * (PLAY_AREA_HEIGHT + 3); 
+
+			int charIndex = (int)((restartText[i] >= 'A' && restartText[i] <= 'Z') ? 
+								restartText[i] - 65 : restartText[i] - NUM_TEX_OFFSET);
+			if (charIndex >= 0 && charIndex < 36)
+				DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4_init(1.0f));
+			
 		}
 
 
 		if (changeTetramino && playingGame)
 		{
-			currentTetramino = InitTetramino(nextTetraminoType, ivec2(4, PLAY_AREA_Y_START+1));
+			currentTetramino = InitTetramino(nextTetraminoType, vec2i_init(4, PLAY_AREA_Y_START+1));
 			
 			//Offset tetramino if usual spawn pos is unavailable
 			int offset = 0;
@@ -567,7 +581,7 @@ void ResetGame(TetraminoType nextTetraminoType,
 			   TetraminoType tetraminoQueue[5])
 {
 	nextTetraminoType = (TetraminoType)(std::rand() % 7 + 1);
-	*heldTetramino = InitTetramino(NONE, ivec2(0));
+	*heldTetramino = InitTetramino(NONE, vec2i_init(0));
 	
 	for (int i = 0; i < 5; ++i)
 		tetraminoQueue[i] =  (TetraminoType)(std::rand() % 7 + 1);
@@ -581,14 +595,14 @@ vec4 TetraminoColour(TetraminoType tetraminoType)
 {
 	switch (tetraminoType)
 	{
-		default:       return vec4(vec3(0.0f), 1.0f);
-		case SQUARE:   return vec4(1.0f, 1.0f, 0.0f, 1.0f);
-		case LINE:     return vec4(0.0f, 1.0f, 1.0f, 1.0f);
-		case L_BLOCK:  return vec4(1.0f, 153.0f/255.0f, 0.0f, 1.0f);
-		case RL_BLOCK: return vec4(0.0f, 0.0f, 1.0f, 1.0f);
-		case S_BLOCK:  return vec4(0.0f, 1.0f, 0.0f, 1.0f);
-		case RS_BLOCK: return vec4(1.0f, 0.0f, 0.0f, 1.0f);
-		case T_BLOCK:  return vec4(153.0f/255.0f, 51.0f/255.0f, 1.0f, 1.0f);
+		default:       return vec4_init(vec3_init(0.0f), 1.0f);
+		case SQUARE:   return vec4_init(1.0f, 1.0f, 0.0f, 1.0f);
+		case LINE:     return vec4_init(0.0f, 1.0f, 1.0f, 1.0f);
+		case L_BLOCK:  return vec4_init(1.0f, 153.0f/255.0f, 0.0f, 1.0f);
+		case RL_BLOCK: return vec4_init(0.0f, 0.0f, 1.0f, 1.0f);
+		case S_BLOCK:  return vec4_init(0.0f, 1.0f, 0.0f, 1.0f);
+		case RS_BLOCK: return vec4_init(1.0f, 0.0f, 0.0f, 1.0f);
+		case T_BLOCK:  return vec4_init(153.0f/255.0f, 51.0f/255.0f, 1.0f, 1.0f);
 	}
 }
 
@@ -597,7 +611,7 @@ void LockTetramino(Tetramino tetramino)
 {
 	for (int i = 0; i < 4; i++)
 	{
-		ivec2 cell = GetBlockCell(tetramino, i);
+		vec2i cell = GetBlockCell(tetramino, i);
 		Assert(cell.y >= 0);
 		playArea[cell.y][cell.x] = (int)tetramino.type;
 	}
@@ -638,11 +652,11 @@ void ClearLines(int lowestRow, int highestRow)
 	} 
 }
 
-void MoveTetramino(Tetramino* tetramino, ivec2 direction)
+void MoveTetramino(Tetramino* tetramino, vec2i direction)
 {	
 	for (int i = 0; i < 4; ++i)
 	{
-		ivec2 newCell = GetBlockCell(*tetramino, i) + direction;
+		vec2i newCell = GetBlockCell(*tetramino, i) + direction;
 
 		//Check that block within play area
 		if (newCell.x >= PLAY_AREA_WIDTH || newCell.x < 0 || newCell.y >= PLAY_AREA_HEIGHT) return;
@@ -658,10 +672,10 @@ void RotateTetramino(Tetramino* tetramino, bool rotateLeft)
 	if (tetramino->type == SQUARE) return;
 
 	//Get Rotation
-	ivec2 rotatedBlocks[4];
+	vec2i rotatedBlocks[4];
 	for (int i = 0; i < 4; ++i)
 	{
-		ivec2 rot; 
+		vec2i rot; 
 		rot.x = tetramino->blockCoords[i].y;
 		rot.y = tetramino->blockCoords[i].x;
 		if (tetramino->type != LINE)
@@ -673,10 +687,10 @@ void RotateTetramino(Tetramino* tetramino, bool rotateLeft)
 	}
 
 	//Push piece back into bounds if out of bounds
-	ivec2 offset = ivec2(0);
+	vec2i offset = vec2i_init(0);
 	for (int i = 0; i < 4; ++i)
 	{
-		ivec2 cell = tetramino->pos + LocalToCell(rotatedBlocks[i]);
+		vec2i cell = tetramino->pos + LocalToCell(rotatedBlocks[i]);
 
 		int rDiff = cell.x - (PLAY_AREA_WIDTH - 1);
 		int lDiff = cell.x - 0;
@@ -688,14 +702,14 @@ void RotateTetramino(Tetramino* tetramino, bool rotateLeft)
 	tetramino->pos -= offset;
 
 	//If rotation would intersect other block, apply wall kick
-	ivec2 kickDirections[5] = {ivec2(0), IVEC2_LEFT, IVEC2_RIGHT, IVEC2_UP, IVEC2_DOWN};
+	vec2i kickDirections[5] = {vec2i_init(0), VEC2I_LEFT, VEC2I_RIGHT, VEC2I_UP, VEC2I_DOWN};
 	int k = 0;
 	while (k < 5)
 	{
 		int numFit = 0;
 		for (int i = 0; i < 4; ++i)
 		{
-			ivec2 newCell = tetramino->pos + LocalToCell(rotatedBlocks[i]) + kickDirections[k];
+			vec2i newCell = tetramino->pos + LocalToCell(rotatedBlocks[i]) + kickDirections[k];
 			
 			bool inBounds = newCell.x < PLAY_AREA_WIDTH && newCell.x >= 0;
 			numFit += (playArea[newCell.y][newCell.x] == 0 && inBounds); 
@@ -711,7 +725,7 @@ void RotateTetramino(Tetramino* tetramino, bool rotateLeft)
 	
 }
 
-ivec2 GetGhostTetraminoPos(Tetramino tetramino)
+vec2i GetGhostTetraminoPos(Tetramino tetramino)
 {
 	//Find lowest hanging block
 	int maxY = 0;
@@ -728,7 +742,7 @@ ivec2 GetGhostTetraminoPos(Tetramino tetramino)
 		bool intersecting = false;
 		for (int i = 0; i < 4; ++i)
 		{
-			ivec2 cell = GetBlockCell(tetramino, i);
+			vec2i cell = GetBlockCell(tetramino, i);
 			if (playArea[cell.y + y][cell.x] > 0) 
 			{
 				intersecting = true;
@@ -741,10 +755,10 @@ ivec2 GetGhostTetraminoPos(Tetramino tetramino)
 	}
 
 	//Return position + (length of ray - 1) 
-	return tetramino.pos + IVEC2_DOWN * (y - 1);
+	return tetramino.pos + VEC2I_DOWN * (y - 1);
 }
 
-Tetramino InitTetramino(TetraminoType type, vec2 pos)
+Tetramino InitTetramino(TetraminoType type, vec2i pos)
 {
 	Tetramino tetramino;
 	tetramino.type = type;
@@ -753,7 +767,7 @@ Tetramino InitTetramino(TetraminoType type, vec2 pos)
 	return tetramino;
 }
 
-void GetTetraminoBlocks(TetraminoType type, ivec2 blockCoords[4])
+void GetTetraminoBlocks(TetraminoType type, vec2i blockCoords[4])
 {
 	//All the "blockCoords" are relative to their centre except the square and line are 
 	//relative to their centre. Square is relative to top left and line is relative to
@@ -762,49 +776,49 @@ void GetTetraminoBlocks(TetraminoType type, ivec2 blockCoords[4])
 	{
 		default:
 			for (int i = 0; i < 4; ++i) 
-				blockCoords[i] = ivec2(0);
+				blockCoords[i] = vec2i_init(0);
 			break;
 		case SQUARE:   
-			blockCoords[0] = ivec2( 0,  0);
-			blockCoords[1] = ivec2( 1,  0);
-			blockCoords[2] = ivec2( 0,  1);
-			blockCoords[3] = ivec2( 1,  1);
+			blockCoords[0] = vec2i_init( 0,  0);
+			blockCoords[1] = vec2i_init( 1,  0);
+			blockCoords[2] = vec2i_init( 0,  1);
+			blockCoords[3] = vec2i_init( 1,  1);
 			break;
 		case LINE:
-			blockCoords[0] = ivec2(-2,  0);
-			blockCoords[1] = ivec2(-1,  0);
-			blockCoords[2] = ivec2( 0,  0);
-			blockCoords[3] = ivec2( 1,  0);
+			blockCoords[0] = vec2i_init(-2,  0);
+			blockCoords[1] = vec2i_init(-1,  0);
+			blockCoords[2] = vec2i_init( 0,  0);
+			blockCoords[3] = vec2i_init( 1,  0);
 			break;
 		case L_BLOCK:  
-			blockCoords[0] = ivec2( 1,  1);
-			blockCoords[1] = ivec2( 1,  0);
-			blockCoords[2] = ivec2( 0,  0);
-			blockCoords[3] = ivec2(-1,  0);
+			blockCoords[0] = vec2i_init( 1,  1);
+			blockCoords[1] = vec2i_init( 1,  0);
+			blockCoords[2] = vec2i_init( 0,  0);
+			blockCoords[3] = vec2i_init(-1,  0);
 			break;
 		case RL_BLOCK: 
-			blockCoords[0] = ivec2(-1,  1);
-			blockCoords[1] = ivec2(-1,  0);
-			blockCoords[2] = ivec2( 0,  0);
-			blockCoords[3] = ivec2( 1,  0);
+			blockCoords[0] = vec2i_init(-1,  1);
+			blockCoords[1] = vec2i_init(-1,  0);
+			blockCoords[2] = vec2i_init( 0,  0);
+			blockCoords[3] = vec2i_init( 1,  0);
 			break;
 		case S_BLOCK: 
-			blockCoords[0] = ivec2(-1,  0);
-			blockCoords[1] = ivec2( 0,  0);
-			blockCoords[2] = ivec2( 0,  1);
-			blockCoords[3] = ivec2( 1,  1);
+			blockCoords[0] = vec2i_init(-1,  0);
+			blockCoords[1] = vec2i_init( 0,  0);
+			blockCoords[2] = vec2i_init( 0,  1);
+			blockCoords[3] = vec2i_init( 1,  1);
 			break;
 		case RS_BLOCK: 
-			blockCoords[0] = ivec2(-1,  1);
-			blockCoords[1] = ivec2( 0,  1);
-			blockCoords[2] = ivec2( 0,  0);
-			blockCoords[3] = ivec2( 1,  0);
+			blockCoords[0] = vec2i_init(-1,  1);
+			blockCoords[1] = vec2i_init( 0,  1);
+			blockCoords[2] = vec2i_init( 0,  0);
+			blockCoords[3] = vec2i_init( 1,  0);
 			break;
 		case T_BLOCK:  
-			blockCoords[0] = ivec2(-1,  0);
-			blockCoords[1] = ivec2( 0,  0);
-			blockCoords[2] = ivec2( 0,  1);
-			blockCoords[3] = ivec2( 1,  0);
+			blockCoords[0] = vec2i_init(-1,  0);
+			blockCoords[1] = vec2i_init( 0,  0);
+			blockCoords[2] = vec2i_init( 0,  1);
+			blockCoords[3] = vec2i_init( 1,  0);
 			break;
 	}
 }
@@ -823,12 +837,22 @@ TetraminoType NextTetramino(TetraminoType tetraminoQueue[5])
 	return result;
 }
 
-ivec2 LocalToCell(ivec2 local)
+vec2i LocalToCell(vec2i local)
 {
-	return ivec2(local.x, -local.y);
+	return vec2i_init(local.x, -local.y);
 }
 
-ivec2 GetBlockCell(Tetramino tetramino, int blockIndex)
+vec2i GetBlockCell(Tetramino tetramino, int blockIndex)
 {
 	return tetramino.pos + LocalToCell(tetramino.blockCoords[blockIndex]);
+}
+
+int min(int a, int b)
+{
+	return (a <= b) ? a : b;
+}
+
+int max(int a, int b)
+{
+	return (a >= b) ? a : b;
 }
