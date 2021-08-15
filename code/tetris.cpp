@@ -1,7 +1,6 @@
 /*
 TODO:
 	- Implement Scores
-	- Custom vec2i, vec3 and vec4
 */
 
 #include "glad.c"
@@ -172,7 +171,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		return 0;
 	}
 
-	uint blockSkin = loadTexture("default_skin.png", true);
+	//Load skins
+	int skinIndex = 0;
+	uint blockSkins[10];
+	for (int i = 0; i < len(blockSkins); ++i)
+	{
+		char fileName[11];
+		snprintf(fileName, sizeof(fileName), "skin%d.png", i);
+		blockSkins[i] = loadTexture(fileName, true);
+		if (!blockSkins[i]) blockSkins[i] = loadTexture("default_skin.png", true);
+	}
 	#if DEBUG
 	uint debugSkin = loadTexture("test_block_skin4.png", true);
 	#endif
@@ -326,6 +334,15 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			continue;
 		}
 
+		for (int i = 0; i < 10; ++i)
+		{
+			if (KeyDown(input.numbers[i]))
+			{
+				skinIndex = i;
+				break;
+			}
+		}
+
 		//Draw Black Backgorund
 		for (int i = PLAY_AREA_Y_START; i < PLAY_AREA_HEIGHT; ++i)
 		{
@@ -351,7 +368,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			{
 				if (playArea[i][j] != 0)
 				{
-					DrawTexturedCell(quadVAO, texShader, blockSkin, X_OFFSET + CELL_PIXEL_LENGTH*j, 
+					DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], 
+									 X_OFFSET + CELL_PIXEL_LENGTH*j, 
 									 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
 								 	 TetraminoColour((TetraminoType)playArea[i][j]));
 				}
@@ -367,7 +385,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * cell.x;
 				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * cell.y;
 				if (cell.y < PLAY_AREA_Y_START) continue;
-				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, TetraminoColour(currentTetramino.type));
+				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+								 TetraminoColour(currentTetramino.type));
 			}
 		}
 
@@ -382,7 +401,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				if (cell.y < PLAY_AREA_Y_START) continue;
 				vec4 ghostColour = TetraminoColour(currentTetramino.type);
 				ghostColour.a = 0.5f;
-				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, ghostColour);
+				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, ghostColour);
 			}
 		}
 
@@ -394,7 +413,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				int x = X_OFFSET - CELL_PIXEL_LENGTH * (3 - heldTetramino.blockCoords[i].x);
 				int y = SCR_HEIGHT - Y_OFFSET + CELL_PIXEL_LENGTH * 
 							(heldTetramino.blockCoords[i].y - 1 - PLAY_AREA_Y_START);
-				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, TetraminoColour(heldTetramino.type));
+				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+								 TetraminoColour(heldTetramino.type));
 			}
 		}
 
@@ -410,7 +430,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				int x = X_OFFSET + CELL_PIXEL_LENGTH * (PLAY_AREA_WIDTH + 3 + cell.x);
 				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * 
 								(3*queueOffset + cell.y + PLAY_AREA_Y_START);
-				DrawTexturedCell(quadVAO, texShader, blockSkin, x, y, TetraminoColour(tetraminoQueue[i]));
+				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+								 TetraminoColour(tetraminoQueue[i]));
 			}
 		}
 
@@ -514,6 +535,9 @@ void processInput(GLFWwindow* window)
 	ProcessKey(window, &input.shift, GLFW_KEY_LEFT_SHIFT);
 	ProcessKey(window, &input.escape, GLFW_KEY_ESCAPE);
 	ProcessKey(window, &input.f4, GLFW_KEY_F4);
+
+	for (int i = 0; i < 10; ++i)
+		ProcessKey(window, &input.numbers[i], GLFW_KEY_0 + i);
 }
 
 void DrawCell(uint quadVAO, uint shader, int x, int y, vec4 colour)
