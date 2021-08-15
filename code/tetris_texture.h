@@ -41,6 +41,7 @@ uint loadTexture(std::string fileName, bool repeat = false)
 	else
 	{
 		std::cout << "Texture failed to load at path: " << path << std::endl;
+		return 0;
 	}
 	stbi_image_free(data);
 
