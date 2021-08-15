@@ -90,9 +90,6 @@ TetraminoType NextTetramino(TetraminoType tetraminoQueue[5]);
 vec2i LocalToCell(vec2i local);
 vec2i GetBlockCell(Tetramino tetramino, int blockIndex);
 
-int min(int a, int b);
-int max(int a, int b);
-
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
@@ -869,14 +866,4 @@ vec2i LocalToCell(vec2i local)
 vec2i GetBlockCell(Tetramino tetramino, int blockIndex)
 {
 	return tetramino.pos + LocalToCell(tetramino.blockCoords[blockIndex]);
-}
-
-int min(int a, int b)
-{
-	return (a <= b) ? a : b;
-}
-
-int max(int a, int b)
-{
-	return (a >= b) ? a : b;
 }
