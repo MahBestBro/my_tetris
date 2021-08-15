@@ -1,10 +1,6 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 typedef unsigned short uint16; 
 
 const uint16 KEY_NULL  = 0b000;
@@ -23,6 +19,23 @@ struct Input
     uint16 shift;
     uint16 escape;
     uint16 f4;
+    union 
+    {
+        struct
+        {
+           uint16 zero; 
+           uint16 one; 
+           uint16 two; 
+           uint16 three; 
+           uint16 four; 
+           uint16 five; 
+           uint16 six; 
+           uint16 seven; 
+           uint16 eight; 
+           uint16 nine; 
+        };
+        uint16 numbers[10];
+    };
 };
 
 bool KeyPress(uint16 key)
