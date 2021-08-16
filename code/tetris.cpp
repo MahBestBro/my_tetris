@@ -36,6 +36,8 @@ TODO:
 //Actual rendered height is 20, the extra 3 is for blocks that go above when game still running
 #define PLAY_AREA_HEIGHT 23 
 #define PLAY_AREA_Y_START 3 //Where the play area starts being rendered
+#define X_OFFSET (SCR_WIDTH  - CELL_PIXEL_LENGTH * PLAY_AREA_WIDTH) / 2
+#define Y_OFFSET (SCR_HEIGHT / CELL_PIXEL_LENGTH - PLAY_AREA_HEIGHT - PLAY_AREA_Y_START) * CELL_PIXEL_LENGTH / 2 
 
 #define VEC2I_RIGHT vec2i_init( 1, 0)
 #define VEC2I_LEFT  vec2i_init(-1, 0)
@@ -69,12 +71,21 @@ struct Tetramino
 	vec2i blockCoords[4];
 };
 
+struct DrawBuffer
+{
+	uint vao;
+	uint shader;
+};
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow* window);
 
-void DrawCell(uint quadquadVAO, uint shader, int x, int y, vec4 colour);
-void DrawBorderedCell(uint quadVAO, uint shader, int x, int y, vec4 fillColour, vec4 borderColour);
-void DrawTexturedCell(uint quadVAO, uint texShader, uint texture, int x, int y, vec4 colour);
+void DrawCell(DrawBuffer draw, vec2i pixelPos, vec4 colour);
+void DrawBorderedCell(DrawBuffer buffer, vec2i pixelPos, vec4 fillColour, vec4 borderColour);
+void DrawTexturedCell(DrawBuffer buffer, uint texture, vec2i pixelPos, vec4 colour);
+void DrawText(DrawBuffer buffer, uint fontTexs[36], 
+			  const char* text, int textLength, vec2i pixelPos, vec4 colour);
+vec2i WorldToPixel(vec2i localPos, bool applyXOffset = true);
 void ProcessKey(GLFWwindow* window, uint16* key, int glfwKey);
 
 void ResetGame(TetraminoType nextTetraminoType, Tetramino* heldTetramino, TetraminoType tetraminoQueue[5]);
@@ -131,6 +142,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+	std::cout << X_OFFSET << "\n";
 
 	//Init quad VAO
 	float quadVerts[]
@@ -168,6 +180,14 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		return 0;
 	}
 
+	DrawBuffer drawBuffer;
+	drawBuffer.vao = quadVAO;
+	drawBuffer.shader = shader;
+	
+	DrawBuffer texBuffer;
+	texBuffer.vao = quadVAO;
+	texBuffer.shader = texShader;
+
 	//Load skins
 	int skinIndex = 0;
 	uint blockSkins[10];
@@ -189,10 +209,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		snprintf(fileName, sizeof(fileName), "%c.png", c);
 		fontTexs[i] = loadTexture(fileName, true);
 	}
-
-	const int SEEN_HEIGHT = PLAY_AREA_HEIGHT - PLAY_AREA_Y_START;
-	const int X_OFFSET = (SCR_WIDTH  - CELL_PIXEL_LENGTH * PLAY_AREA_WIDTH)  / 2;
-	const int Y_OFFSET = (SCR_HEIGHT - CELL_PIXEL_LENGTH * SEEN_HEIGHT) / 2 - CELL_PIXEL_LENGTH*3;
 
 	bool playingGame = true;
 
@@ -345,15 +361,12 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		{
 			for (int j = 0; j < PLAY_AREA_WIDTH; ++j)
 			{
+				vec2i pixelPos = WorldToPixel(vec2i_init(j, i));
 				#if ENABLE_GRID
-					DrawBorderedCell(quadVAO, shader, X_OFFSET + CELL_PIXEL_LENGTH*j, 
-									 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
-									 vec4_init(vec3_init(0.0f), 1.0f), 
+					DrawBorderedCell(drawBuffer, pixelPos, vec4_init(vec3_init(0.0f), 1.0f), 
 									 vec4_init(vec3_init(0.15f), 1.0f));
 				#else
-					DrawCell(quadVAO, shader, X_OFFSET + CELL_PIXEL_LENGTH*j, 
-							 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
-							 vec4_init(vec3_init(0.0f), 1.0f));
+					DrawCell(drawBuffer, pixelPos, vec4_init(vec3_init(0.0f), 1.0f));
 				#endif
 			}
 		}
@@ -365,10 +378,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			{
 				if (playArea[i][j] != 0)
 				{
-					DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], 
-									 X_OFFSET + CELL_PIXEL_LENGTH*j, 
-									 SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH*i, 
-								 	 TetraminoColour((TetraminoType)playArea[i][j]));
+					vec2i pixelPos = WorldToPixel(vec2i_init(j, i));
+					DrawTexturedCell(texBuffer, blockSkins[skinIndex], pixelPos, 
+										TetraminoColour((TetraminoType)playArea[i][j]));
 				}
 			}
 		}
@@ -379,10 +391,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			for (int i = 0; i < 4; ++i)
 			{
 				vec2i cell = GetBlockCell(currentTetramino, i);
-				int x = X_OFFSET + CELL_PIXEL_LENGTH * cell.x;
-				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * cell.y;
 				if (cell.y < PLAY_AREA_Y_START) continue;
-				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+
+				DrawTexturedCell(texBuffer, blockSkins[skinIndex], WorldToPixel(cell), 
 								 TetraminoColour(currentTetramino.type));
 			}
 		}
@@ -393,12 +404,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			for (int i = 0; i < 4; ++i)
 			{
 				vec2i cell = ghostTetraminoPos + LocalToCell(currentTetramino.blockCoords[i]);
-				int x = X_OFFSET + CELL_PIXEL_LENGTH * cell.x;
-				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * cell.y;
 				if (cell.y < PLAY_AREA_Y_START) continue;
+				
 				vec4 ghostColour = TetraminoColour(currentTetramino.type);
 				ghostColour.a = 0.5f;
-				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, ghostColour);
+				DrawTexturedCell(texBuffer, blockSkins[skinIndex], WorldToPixel(cell), ghostColour);
 			}
 		}
 
@@ -407,10 +417,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		{
 			if (heldTetramino.type != NONE)
 			{
-				int x = X_OFFSET - CELL_PIXEL_LENGTH * (3 - heldTetramino.blockCoords[i].x);
-				int y = SCR_HEIGHT - Y_OFFSET + CELL_PIXEL_LENGTH * 
-							(heldTetramino.blockCoords[i].y - 1 - PLAY_AREA_Y_START);
-				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+				int x = heldTetramino.blockCoords[i].x - 3;
+				int y = PLAY_AREA_Y_START - heldTetramino.blockCoords[i].y + 1;
+				vec2i pixelPos = WorldToPixel(vec2i_init(x, y));
+				DrawTexturedCell(texBuffer, blockSkins[skinIndex], pixelPos, 
 								 TetraminoColour(heldTetramino.type));
 			}
 		}
@@ -424,10 +434,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			for (int b = 0; b < 4; ++b)
 			{
 				vec2i cell = LocalToCell(blocks[b]);
-				int x = X_OFFSET + CELL_PIXEL_LENGTH * (PLAY_AREA_WIDTH + 3 + cell.x);
-				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * 
-								(3*queueOffset + cell.y + PLAY_AREA_Y_START);
-				DrawTexturedCell(quadVAO, texShader, blockSkins[skinIndex], x, y, 
+				int x = PLAY_AREA_WIDTH + 3 + cell.x;
+				int y =  3 * queueOffset + cell.y + PLAY_AREA_Y_START;
+				vec2i pixelPos = WorldToPixel(vec2i_init(x, y));
+				DrawTexturedCell(texBuffer, blockSkins[skinIndex], pixelPos, 
 								 TetraminoColour(tetraminoQueue[i]));
 			}
 		}
@@ -446,35 +456,17 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		if (!playingGame)
 		{
 			const char gameOver[10] = "GAME OVER";
-			for (int i = 0; i < len(gameOver); ++i)
-			{
-				int x = X_OFFSET + CELL_PIXEL_LENGTH * i;
-				int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH; 
-
-				int charIndex = (int)gameOver[i] - 65;
-				if (charIndex >= 0 && charIndex < 26)
-					DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4_init(1.0f));
-				
-			}
+			int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH; 
+			DrawText(texBuffer, fontTexs, gameOver, len(gameOver), vec2i_init(X_OFFSET, y), 
+					 vec4_init(1.0f));
 		}
 
 		//Draw Restart Text
 		const char restartText[26] = "PRESS F4 TO RESTART GAME";
-		for (int i = 0; i < len(restartText); ++i)
-		{
-			if (restartText[i] == ' ') continue;
-
-			int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - len(restartText)) / 2;
-			int x = CELL_PIXEL_LENGTH * (xOffset + i + 1);
-			int y = SCR_HEIGHT - CELL_PIXEL_LENGTH * (PLAY_AREA_HEIGHT + 3); 
-
-			int charIndex = (int)((restartText[i] >= 'A' && restartText[i] <= 'Z') ? 
-								restartText[i] - 65 : restartText[i] - NUM_TEX_OFFSET);
-			if (charIndex >= 0 && charIndex < 36)
-				DrawTexturedCell(quadVAO, texShader, fontTexs[charIndex], x, y, vec4_init(1.0f));
-			
-		}
-
+		int y = PLAY_AREA_HEIGHT + 3;
+		int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - 24) / 2 ;
+		vec2i pixelPos = WorldToPixel(vec2i_init(xOffset, y), false);
+		DrawText(texBuffer, fontTexs, restartText, len(restartText) + 1, pixelPos, vec4_init(1.0f));
 
 		if (changeTetramino && playingGame)
 		{
@@ -537,49 +529,72 @@ void processInput(GLFWwindow* window)
 		ProcessKey(window, &input.numbers[i], GLFW_KEY_0 + i);
 }
 
-void DrawCell(uint quadVAO, uint shader, int x, int y, vec4 colour)
+void DrawCell(DrawBuffer buffer, vec2i pixelPos, vec4 colour)
 {
-    glUseProgram(shader);
-	shader_SetVector4f(shader, "spriteColour", colour);
+    glUseProgram(buffer.shader);
+	shader_SetVector4f(buffer.shader, "spriteColour", colour);
 
-    glBindVertexArray(quadVAO);
+    glBindVertexArray(buffer.vao);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(x, y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
+    glScissor(pixelPos.x, pixelPos.y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glDisable(GL_SCISSOR_TEST);
 }
 
-void DrawBorderedCell(uint quadVAO, uint shader, int x, int y, vec4 fillColour, vec4 borderColour)
+void DrawBorderedCell(DrawBuffer buffer, vec2i pixelPos, vec4 fillColour, vec4 borderColour)
 {
 	glEnable(GL_SCISSOR_TEST);
-	glUseProgram(shader);
+	glUseProgram(buffer.shader);
 	
 	//Draw border
-	shader_SetVector4f(shader, "spriteColour", borderColour);
-    glBindVertexArray(quadVAO);
-	glScissor(x, y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
+	shader_SetVector4f(buffer.shader, "spriteColour", borderColour);
+    glBindVertexArray(buffer.vao);
+	glScissor(pixelPos.x, pixelPos.y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	//Draw centre
-	shader_SetVector4f(shader, "spriteColour", fillColour);
-    glScissor(x + 1, y + 1, CELL_PIXEL_LENGTH - 2, CELL_PIXEL_LENGTH - 2);
+	shader_SetVector4f(buffer.shader, "spriteColour", fillColour);
+    glScissor(pixelPos.x + 1, pixelPos.y + 1, CELL_PIXEL_LENGTH - 2, CELL_PIXEL_LENGTH - 2);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     glDisable(GL_SCISSOR_TEST);
 }
 
-void DrawTexturedCell(uint quadVAO, uint texShader, uint texture, int x, int y, vec4 colour)
+void DrawTexturedCell(DrawBuffer texBuffer, uint texture, vec2i pixelPos, vec4 colour)
 {
-	glUseProgram(texShader);
-	shader_SetVector4f(texShader, "spriteColour", colour);
-	shader_SetInt(texShader, "tex", 0);
+	glUseProgram(texBuffer.shader);
+	shader_SetVector4f(texBuffer.shader, "spriteColour", colour);
+	shader_SetInt(texBuffer.shader, "tex", 0);
 
 	glBindTexture(GL_TEXTURE_2D, texture);
-    glBindVertexArray(quadVAO);
+    glBindVertexArray(texBuffer.vao);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(x, y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
+    glScissor(pixelPos.x, pixelPos.y, CELL_PIXEL_LENGTH, CELL_PIXEL_LENGTH);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glDisable(GL_SCISSOR_TEST);
+}
+
+void DrawText(DrawBuffer texBuffer, uint fontTexs[36], 
+			  const char* text, int textLength, vec2i pixelPos, vec4 colour)
+{
+	for (int i = 0; i < textLength; ++i)
+	{
+		if (text[i] == ' ') continue;
+
+		int x = pixelPos.x + CELL_PIXEL_LENGTH * i;
+
+		int charIndex = (int)((text[i] >= 'A' && text[i] <= 'Z') ? 
+							text[i] - 65 : text[i] - NUM_TEX_OFFSET);
+		if (charIndex >= 0 && charIndex < 36)	
+			DrawTexturedCell(texBuffer, fontTexs[charIndex], vec2i_init(x, pixelPos.y), colour);
+	}
+}
+
+vec2i WorldToPixel(vec2i localPos, bool applyXOffset)
+{
+	int x = X_OFFSET * (applyXOffset) + CELL_PIXEL_LENGTH * localPos.x;
+	int y = SCR_HEIGHT - Y_OFFSET - CELL_PIXEL_LENGTH * localPos.y;
+	return vec2i_init(x, y);
 }
 
 void ProcessKey(GLFWwindow* window, uint16* key,int glfwKey)
