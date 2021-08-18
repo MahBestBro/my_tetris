@@ -1,6 +1,6 @@
 /*
 TODO:
-	- Implement Scores
+	- Fix bug where holding down arrow key causes massive score gain and does not auto lock
 */
 
 #include "glad.c"
@@ -88,10 +88,11 @@ void DrawText(DrawBuffer buffer, uint fontTexs[36],
 vec2i WorldToPixel(vec2i localPos, bool applyXOffset = true);
 void ProcessKey(GLFWwindow* window, uint16* key, int glfwKey);
 
-void ResetGame(TetraminoType nextTetraminoType, Tetramino* heldTetramino, TetraminoType tetraminoQueue[5]);
+void ResetGame(TetraminoType nextTetraminoType, Tetramino* heldTetramino, 
+			   TetraminoType tetraminoQueue[5], int* score);
 vec4 TetraminoColour(TetraminoType tetraminoType);
-void LockTetramino(Tetramino tetramino);
-void ClearLines(int lowestRow, int highestRow);
+void LockTetramino(Tetramino tetramino, int* score);
+void ClearLines(int lowestRow, int highestRow, int* score);
 void MoveTetramino(Tetramino* tetramino, vec2i direction);
 void RotateTetramino(Tetramino* tetramino, bool rotateLeft);
 vec2i GetGhostTetraminoPos(Tetramino tetramino);
@@ -100,6 +101,8 @@ void GetTetraminoBlocks(TetraminoType type, vec2i blockCoords[4]);
 TetraminoType NextTetramino(TetraminoType tetraminoQueue[5]);
 vec2i LocalToCell(vec2i local);
 vec2i GetBlockCell(Tetramino tetramino, int blockIndex);
+
+int ipow(int base, int exp);
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -217,6 +220,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	float heldTime = 0.0f;
 	float moveThreshold = 0.125f;
 	int numTimesSamePos = 0;
+	int score = 0;
 
 	std::srand((int)time(nullptr));
 
@@ -256,7 +260,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				if (numTimesSamePos == 2)
 				{
 					currentTetramino.pos = ghostTetraminoPos;
-					LockTetramino(currentTetramino);
+					LockTetramino(currentTetramino, &score);
 					nextTetraminoType = NextTetramino(tetraminoQueue);
 					changeTetramino = true;
 					numTimesSamePos = 0;
@@ -268,9 +272,14 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 					elapsedTime = 0.0f;
 
 					if (currentTetramino.pos == prevPos)
+					{
 						numTimesSamePos++;
+					}
 					else
+					{
 						numTimesSamePos = 0;
+						score += 10;
+					}
 				}
 			}
 
@@ -303,6 +312,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			if (KeyPress(input.down))
 			{
 				MoveTetramino(&currentTetramino, VEC2I_DOWN);
+				score += 10;
 			}
 
 			if (KeyDown(input.x))
@@ -330,7 +340,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			if (KeyDown(input.space))
 			{
 				currentTetramino.pos = ghostTetraminoPos;
-				LockTetramino(currentTetramino);
+				LockTetramino(currentTetramino, &score);
 				nextTetraminoType = NextTetramino(tetraminoQueue);
 				changeTetramino = true;
 				numTimesSamePos = 0;
@@ -339,7 +349,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 		if (KeyDown(input.f4))
 		{
-			ResetGame(nextTetraminoType, &heldTetramino, tetraminoQueue);
+			ResetGame(nextTetraminoType, &heldTetramino, tetraminoQueue, &score);
 			playingGame = true;
 			elapsedTime = 0.0f;
 			numTimesSamePos = 0;
@@ -462,11 +472,46 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		}
 
 		//Draw Restart Text
-		const char restartText[26] = "PRESS F4 TO RESTART GAME";
-		int y = PLAY_AREA_HEIGHT + 3;
-		int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - 24) / 2 ;
-		vec2i pixelPos = WorldToPixel(vec2i_init(xOffset, y), false);
-		DrawText(texBuffer, fontTexs, restartText, len(restartText) + 1, pixelPos, vec4_init(1.0f));
+		{
+			const char restartText[26] = "PRESS F4 TO RESTART GAME";
+			int y = PLAY_AREA_HEIGHT + 3;
+			int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - 24) / 2 ;
+			vec2i pixelPos = WorldToPixel(vec2i_init(xOffset, y), false);
+			DrawText(texBuffer, fontTexs, restartText, len(restartText) + 1, pixelPos, vec4_init(1.0f));
+		}
+
+		//Draw Score Text
+		{
+			const char scoreText[8] = "SCORE: ";
+			vec2i pixelPos = WorldToPixel(vec2i_init(PLAY_AREA_WIDTH + 6, PLAY_AREA_Y_START), true);
+			DrawText(texBuffer, fontTexs, scoreText, len(scoreText), pixelPos, vec4_init(1.0f));
+
+			//Get num digits in score (int log10(score))
+			int numDigits = 0;
+			int tempScore = score;
+			while (tempScore >= 1) 
+			{
+				tempScore /= 10;
+				numDigits++;
+			}
+
+			tempScore = score;
+			vec2i startPos = vec2i_init(PLAY_AREA_WIDTH + 6, PLAY_AREA_Y_START + 1);
+			const int scoreLen = 8;
+			for (int i = scoreLen - 1; i >= 0; --i)
+			{
+				char digit[2] = "0";
+				if (i < numDigits)
+				{
+					int exp = ipow(10, i);
+					int digitNum = tempScore / exp;
+					digit[0] = (char)(digitNum + 48);
+					tempScore -= digitNum * exp;
+				}
+				vec2i digitPixelPos = WorldToPixel(startPos + VEC2I_RIGHT * (scoreLen - 1- i));
+				DrawText(texBuffer, fontTexs, digit, 2, digitPixelPos, vec4_init(1.0f));
+			}
+		}
 
 		if (changeTetramino && playingGame)
 		{
@@ -614,7 +659,8 @@ void ProcessKey(GLFWwindow* window, uint16* key,int glfwKey)
 
 void ResetGame(TetraminoType nextTetraminoType, 
 			   Tetramino* heldTetramino, 
-			   TetraminoType tetraminoQueue[5])
+			   TetraminoType tetraminoQueue[5],
+			   int* score)
 {
 	nextTetraminoType = (TetraminoType)(std::rand() % 7 + 1);
 	*heldTetramino = InitTetramino(NONE, vec2i_init(0));
@@ -625,6 +671,8 @@ void ResetGame(TetraminoType nextTetraminoType,
 	for (int i = 0; i < PLAY_AREA_HEIGHT; ++i)
 		for (int j = 0; j < PLAY_AREA_WIDTH; ++j)
 			playArea[i][j] = 0;
+
+	*score = 0;
 }
 
 vec4 TetraminoColour(TetraminoType tetraminoType)
@@ -643,7 +691,7 @@ vec4 TetraminoColour(TetraminoType tetraminoType)
 }
 
 //Places tetramino blocks into play area
-void LockTetramino(Tetramino tetramino)
+void LockTetramino(Tetramino tetramino, int* score)
 {
 	for (int i = 0; i < 4; i++)
 	{
@@ -661,10 +709,10 @@ void LockTetramino(Tetramino tetramino)
 		if (y > highestY) highestY = y;
 		if (y < lowestY)  lowestY  = y;
 	}
-	ClearLines(lowestY, highestY);
+	ClearLines(lowestY, highestY, score);
 }
 
-void ClearLines(int lowestRow, int highestRow)
+void ClearLines(int lowestRow, int highestRow, int* score)
 {
 	bool lineHasBeenCleared = false;
 	for (int r = lowestRow; r <= highestRow; ++r)
@@ -684,6 +732,7 @@ void ClearLines(int lowestRow, int highestRow)
 			for (int j = r; j > 0; --j)
 				for (int c = 0; c < PLAY_AREA_WIDTH; ++c) 
 					playArea[j][c] = playArea[j-1][c];
+			*score += 100;
 		} 
 	} 
 }
@@ -881,4 +930,12 @@ vec2i LocalToCell(vec2i local)
 vec2i GetBlockCell(Tetramino tetramino, int blockIndex)
 {
 	return tetramino.pos + LocalToCell(tetramino.blockCoords[blockIndex]);
+}
+
+int ipow(int base, int exp)
+{
+	int result = 1;
+	for (int i = 0; i < exp; ++i)
+		result *= base;
+	return result;
 }
