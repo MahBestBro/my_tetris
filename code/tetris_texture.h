@@ -1,5 +1,5 @@
-#ifndef TEXTURE_H
-#define TEXTURE_H
+#ifndef TETRIS_TEXTURE_H
+#define TETRIS_TEXTURE_H
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
