@@ -1,8 +1,3 @@
-/*
-TODO:
-	- Fix bug where holding down arrow key causes massive score gain and does not auto lock
-*/
-
 #include "glad.c"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -219,6 +214,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	float stepTime = 1.0f;
 	float heldTime = 0.0f;
 	float moveThreshold = 0.125f;
+	float tickTime = 0.0f;
+	float moveTick = 0.0000000001f; //lol 
 	int numTimesSamePos = 0;
 	int score = 0;
 
@@ -254,7 +251,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		if (playingGame)
 		{
 			//Update Rows	
-			if (elapsedTime >= stepTime && !KeyPress(input.down))
+			if (elapsedTime >= stepTime)
 			{
 				//Auto lock tetramino if been is same position 3 times, else move normally
 				if (numTimesSamePos == 2)
@@ -268,7 +265,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 				else
 				{
 					vec2i prevPos = currentTetramino.pos;
-					MoveTetramino(&currentTetramino, VEC2I_DOWN);
+					if (!KeyPress(input.down)) MoveTetramino(&currentTetramino, VEC2I_DOWN);
 					elapsedTime = 0.0f;
 
 					if (currentTetramino.pos == prevPos)
@@ -298,21 +295,34 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			if (KeyPress(input.left))
 			{
 				heldTime += deltaTime;
-				if (heldTime > moveThreshold)
+				if (heldTime > moveThreshold && tickTime > moveTick)
+				{
 					MoveTetramino(&currentTetramino, VEC2I_LEFT);
+					tickTime = 0.0f;
+				}
+				else 
+					tickTime += deltaTime;
+				
 			}
 
 			if (KeyPress(input.right))
 			{
 				heldTime += deltaTime;
-				if (heldTime > moveThreshold)
+				if (heldTime > moveThreshold && tickTime > moveTick)
+				{
 					MoveTetramino(&currentTetramino, VEC2I_RIGHT);
+					tickTime = 0.0f;
+				}
+				else 
+					tickTime += deltaTime;
 			}
 
 			if (KeyPress(input.down))
 			{
+				vec2i prevPos = currentTetramino.pos;
 				MoveTetramino(&currentTetramino, VEC2I_DOWN);
-				score += 10;
+				if (currentTetramino.pos != prevPos)
+					score += 10;
 			}
 
 			if (KeyDown(input.x))
@@ -473,7 +483,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 		//Draw Restart Text
 		{
-			const char restartText[26] = "PRESS F4 TO RESTART GAME";
+			const char restartText[25] = "PRESS F4 TO RESTART GAME";
 			int y = PLAY_AREA_HEIGHT + 3;
 			int xOffset = ((SCR_WIDTH / CELL_PIXEL_LENGTH) - 24) / 2 ;
 			vec2i pixelPos = WorldToPixel(vec2i_init(xOffset, y), false);
@@ -487,6 +497,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 			DrawText(texBuffer, fontTexs, scoreText, len(scoreText), pixelPos, vec4_init(1.0f));
 
 			//Get num digits in score (int log10(score))
+			if (score > 99999999) score = 99999999; //Overflow prevention
 			int numDigits = 0;
 			int tempScore = score;
 			while (tempScore >= 1) 
