@@ -88,6 +88,11 @@ bool operator==(vec2i a, vec2i b)
     return a.x == b.x && a.y == b.y;
 }
 
+bool operator!=(vec2i a, vec2i b)
+{
+    return !(a == b);
+}
+
 
 
 union vec3
